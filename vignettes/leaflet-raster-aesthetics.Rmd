@@ -1,0 +1,107 @@
+---
+title: "Leaflet raster aesthetics"
+author: "Michael Sumner"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    fig_width: 7
+    fig_height: 7
+vignette: >
+  %\VignetteIndexEntry{leaflet-raster}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r,include=FALSE}
+sprintv <- function(f, x) {
+  do.call(sprintf, c(list(f), x))
+}
+```
+## Absolute raster
+
+Notice how when we plot a raster, we get a relative palette. 
+
+```{r}
+data("oisst", package= "palr")
+oisst
+
+plot(oisst)
+```
+
+Several things happened when we made this plot. There's a scale on the RHS, and this gives us a reverse-read-out where the colours in the map can be matched to values in the scale, and so all the green stuff is in the high 'teens. The plot process did all of these things: 
+
+* find the minimum and maximum values in the data **`r sprintv("[%s, %s]", round(cellStats(oisst, range), digits =2))`**. 
+* pick sequence of colours and map all values between the minimum and maximum values linearly
+* identify locations of pixels on the page, match the pixel value to the colour, and fill that pixel with the right colour
+
+What happens if we plot the same data but don't include all of it? (Cunning `raster` has nice `extent` arithmetic tricks to make this easy to do). 
+
+```{r}
+cropped <- crop(oisst, extent(oisst) -25)
+plot(oisst); plot(cropped, add = TRUE)
+```
+
+This time, all the same three things above happened again, but the min and max were different **`r sprintv("[%s, %s]", round(cellStats(cropped, range), digits =2))`**. 
+
+What if we choose our own colours? 
+
+```{r}
+library(palr)
+plot(oisst, col = palr::sstPal(26, alpha = 0.75)); plot(cropped, col = palr::sstPal(26, alpha = 0.75), add = TRUE)
+
+```
+
+It's the same, we still get a different value-to-colour mapping when we use different data. 
+
+## Enter the absolute palette
+
+Let's tell the plot exactly[^1] what to do. 
+
+[^1]: we can't really do that, not without using `rasterImage` directly. 
+
+
+
+```{r}
+sst_pal <- sstPal(palette = TRUE)
+print(range(sst_pal$breaks))
+plot(oisst, col = sst_pal$cols, breaks = sst_pal$breaks, legend = FALSE)
+```
+
+This time, we get a completely different picture because even though we input all the same colours as before, the range of values in our data is not as wide as the range in the `sstPal` object. 
+
+Now add the cropped part, but make the background slightly transparent. This time nicely see that we get the same value-colour relationship, no matter what we do. 
+
+```{r}
+plot(oisst, col = gsub("ff$", "cc", sst_pal$cols), breaks = sst_pal$breaks, legend = FALSE)
+plot(cropped, col = sst_pal$cols, breaks = sst_pal$breaks, legend = FALSE, add = TRUE)
+```
+
+Working with breaks and colours can be a pain though, so `raster` has a nice trick. 
+
+We can give the plot any colours, and specify the `zlim` i.e. the min and the max, no matter what's in the data. This has 
+the added benefit of also getting the scale bar ("legend") right, which is hard to control when we have our own breaks. 
+
+```{r}
+plot(oisst, col = sst_pal$cols, zlim = c(-10, 50))
+plot(cropped, col = sst_pal$cols, zlim = c(-10, 50), add = TRUE)
+```
+
+Hopefully we'll never see real data that needs this colour scale!  (...)
+
+## we are done right?
+
+No, unfortunately this simple linear scale doesn't work well for all data sets. 
+
+
+
+
+## Leaflet
+
+In `leaflet` we can control the breaks and colours in a similar way, the `colors` argument will accept a `colorNumeric` object. 
+
+
+```{r}
+
+library(leaflet)
+leaflet() %>% addRasterImage(oisst, colors = colorNumeric(sst_pal$cols, range(sst_pal$breaks))) %>% addSimpleGraticule() %>% addRasterImage(cropped)
+```
